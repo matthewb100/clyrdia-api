@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # Clyrdia API
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+      - supabase
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+  # Redis for caching and Celery
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+  # Celery worker for background tasks
+  celery:
+    build: .
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+      - supabase
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+  # Celery beat for scheduled tasks
+  celery-beat:
+    build: .
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+      - supabase
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+  # Supabase for local development
+  supabase:
+    image: supabase/postgres:15.1.0.117
+    environment:
+      POSTGRES_PASSWORD: your-super-secret-password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - supabase_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - clyrdia-network
+
+volumes:
+  redis_data:
+  supabase_data:
+
+networks:
+  clyrdia-network:
+    driver: bridge 
